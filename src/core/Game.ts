@@ -19,6 +19,7 @@ import { LINES, lineDuration } from '../story/script';
 import { SCRIPTS } from '../world/scripts';
 import { SaveSystem } from './SaveSystem';
 import { Hud } from '../ui/Hud';
+import { TouchControls, isTouchDevice } from '../ui/TouchControls';
 import { Input } from './Input';
 import { Loop } from './Loop';
 import { settings } from './Settings';
@@ -40,6 +41,7 @@ export class Game {
   input = new Input();
   loop: Loop;
   hud: Hud;
+  touch: TouchControls;
   level: Level | null = null;
   gun: PortalGun;
   traversal: Traversal;
@@ -85,6 +87,16 @@ export class Game {
     this.stalker = new Stalker(this.scene, this.physics, this.player);
     this.director = new Director(this.stalker);
     this.hud = new Hud(ui, params.get('fps') === '1' || import.meta.env.DEV);
+    this.touch = new TouchControls(ui, this.input);
+    this.touch.onPause = () => this.pause();
+    if (isTouchDevice()) this.touch.enable();
+    // Hybrid laptops / devtools emulation: first real touch enables the layout.
+    window.addEventListener('touchstart', () => {
+      if (!this.input.touchMode) {
+        this.touch.enable();
+        this.syncTouchUI();
+      }
+    }, { passive: true, once: true });
     this.loop = new Loop((dt) => this.update(dt), (dt) => this.render(dt));
 
     events.on('player.died', ({ cause }) => this.handleDeath(cause));
@@ -147,17 +159,20 @@ export class Game {
       this.loadChamber(direct);
       this.input.enabled = true;
       this.hud.setCrosshairVisible(true);
+      this.syncTouchUI();
       void this.hud.fadeIn();
     } else if (this.onShowMenu) {
       // backdrop only: stays non-'playing' so its intro checkpoint won't save
       this.loadChamber(FIRST_CHAMBER); // menu backdrop renders the first chamber
       this.onShowMenu();
+      this.syncTouchUI();
       void this.hud.fadeIn(true);
     } else {
       this.state = 'playing';
       this.loadChamber(FIRST_CHAMBER);
       this.input.enabled = true;
       this.hud.setCrosshairVisible(true);
+      this.syncTouchUI();
       void this.hud.fadeIn();
     }
     this.loop.start();
@@ -391,6 +406,7 @@ export class Game {
   showCredits(ending: string): void {
     this.state = 'credits';
     this.input.exitLock();
+    this.syncTouchUI();
     this.onCredits?.(ending);
   }
   onCredits: ((ending: string) => void) | null = null;
@@ -399,6 +415,7 @@ export class Game {
     if (this.state !== 'playing') return;
     this.state = 'paused';
     this.input.exitLock();
+    this.syncTouchUI();
     events.emit('game.paused', undefined);
   }
 
@@ -406,7 +423,22 @@ export class Game {
     if (this.state !== 'paused') return;
     this.state = 'playing';
     this.input.requestLock();
+    this.syncTouchUI();
     events.emit('game.resumed', undefined);
+  }
+
+  /** Show touch controls only while playing on a touch device. */
+  syncTouchUI(): void {
+    if (!this.input.touchMode) {
+      this.touch.setVisible(false);
+      return;
+    }
+    this.touch.setVisible(this.state === 'playing');
+  }
+
+  /** Called by the menu shell when it takes over the screen. */
+  showMenuState(): void {
+    this.syncTouchUI();
   }
 
   update(dt: number): void {
@@ -445,9 +477,10 @@ export class Game {
     const d = this.input.consumeMouseDelta();
     this.player.applyLook(d.dx, d.dy, settings.data.sensitivity);
 
+    const move = this.input.moveVector();
     this.player.update(dt, {
-      forward: (this.input.isDown('forward') ? 1 : 0) - (this.input.isDown('back') ? 1 : 0),
-      strafe: (this.input.isDown('right') ? 1 : 0) - (this.input.isDown('left') ? 1 : 0),
+      forward: move.forward,
+      strafe: move.strafe,
       sprint: this.input.isDown('sprint'),
       jump: this.input.wasPressed('jump'),
     });

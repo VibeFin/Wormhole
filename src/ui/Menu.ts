@@ -46,16 +46,18 @@ export class Menu {
   showMain(): void {
     this.game.state = 'menu';
     this.game.input.enabled = false;
+    this.game.syncTouchUI();
     this.game.hud.setCrosshairVisible(false);
     this.game.hud.setObjective('', '');
     const save = SaveSystem.load();
+    const touchHint = this.game.input.touchMode;
     const div = this.screen(`
       <div class="title">W<span class="o">O</span>RMHOLE</div>
       <div class="subtitle-tag">MERIDIAN-9 · DEEP RESEARCH ANNEX</div>
       ${save ? '<button class="btn" data-act="continue">Continue</button>' : ''}
       <button class="btn" data-act="new">${save ? 'New Descent' : 'Begin Descent'}</button>
       <button class="btn" data-act="settings">Settings</button>
-      <div class="menu-foot">HEADPHONES RECOMMENDED · WASD + MOUSE · A HORROR PUZZLE GAME</div>
+      <div class="menu-foot">${touchHint ? 'LEFT STICK TO MOVE · DRAG TO LOOK · A HORROR PUZZLE GAME' : 'HEADPHONES RECOMMENDED · WASD + MOUSE · A HORROR PUZZLE GAME'}</div>
     `);
     div.querySelector('[data-act="continue"]')?.addEventListener('click', () => {
       this.sfx.confirm();
@@ -102,6 +104,7 @@ export class Menu {
     }
     this.game.input.enabled = true;
     this.game.hud.setCrosshairVisible(true);
+    this.game.syncTouchUI();
     this.game.input.requestLock();
     const data = this.game.level?.data;
     if (data) this.game.hud.showChapterCard(data.chapter, data.title);
@@ -136,6 +139,7 @@ export class Menu {
     div.querySelector('[data-act="quit"]')!.addEventListener('click', () => {
       this.sfx.confirm();
       this.game.state = 'menu';
+      this.game.syncTouchUI();
       this.showMain();
     });
   }
